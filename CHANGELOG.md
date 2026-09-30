@@ -2,6 +2,23 @@
 
 This document tracks all releases, configuration changes, and maintenance updates applied to the **`omarchy-personal-repo`** pacman repository hosted via GitHub Pages.
 
+## [2026-09-30]
+
+### `68bbb38` — publish: v4.0.4-99 (GPG Key Rotation & v4.0.4 Publication)
+
+- **Commit Hash:** [`68bbb3833d0c9b470c8ddf02865e812e3e8e4602`](https://github.com/robert-flo/omarchy-personal-repo/commit/68bbb3833d0c9b470c8ddf02865e812e3e8e4602)
+- **Branch:** `gh-pages`
+
+#### What was changed:
+1. **Binary Package Upgrades:**
+   - Promoted `omarchy` to `4.0.4-99-any.pkg.tar.zst` (66.2 MB) with version shading over official `4.0.4-1`.
+   - Promoted `omarchy-settings` to `4.0.4-99-any.pkg.tar.zst` (747 KB) in lockstep.
+2. **Cryptographic Signatures & Database Generation:**
+   - Regenerated and resigned database indices: `omarchy.db`, `omarchy.files`, `omarchy-personal.db`, `omarchy-personal.files`.
+   - Signed all packages and databases using rotated dedicated GPG key `CD92AB07B1D24DC9A74EB60E76AFFCC217DB9FC4`.
+3. **Live CDN Verification:**
+   - Confirmed HTTP 200 delivery of binaries and detached PGP armor signatures via GitHub Pages CDN.
+
 ---
 
 ## [2026-09-29]
