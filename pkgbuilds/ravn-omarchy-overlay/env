@@ -1,0 +1,3 @@
+# ravn-omarchy-overlay: entorno (tambien shells no interactivas).
+# Cursor API key (fuera de git; crearla con chmod 600)
+[[ -r ~/.config/cursor/api-key ]] && export CURSOR_API_KEY="$(<~/.config/cursor/api-key)"
