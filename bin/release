@@ -121,12 +121,11 @@ existing="$(gh release view pkg-stable -R "$REPO_SLUG" --json assets -q '.assets
 for f in $BIG; do
   grep -qx "$f" <<<"$existing" || gh release upload pkg-stable -R "$REPO_SLUG" "$f" "$f.sig"
 done
-for a in $existing; do
-  keep=0; for f in $BIG; do [[ "$a" == "$f" || "$a" == "$f.sig" ]] && keep=1; done
-  [[ $keep -eq 1 ]] || gh release delete-asset pkg-stable "$a" -R "$REPO_SLUG" -y
-done
+# Los assets viejos NO se borran aqui: la db vieja los referencia hasta que Pages
+# sirva la nueva. bin/prune-assets lo hace despues de validar Pages.
+printf '%s\n' $BIG > "$OUT/big.txt"
 dst="$PAGES_DIR/stable/x86_64"; rm -rf "$dst"; mkdir -p "$dst"
-for f in *; do case " $BIG " in *" ${f%.sig} "*) continue;; esac; cp -a "$f" "$dst/"; done
+for f in *; do if [[ -n "$BIG" ]] && grep -Fqx -- "${f%.sig}" <<<"$BIG"; then continue; fi; cp -a "$f" "$dst/"; done
 cd "$PAGES_DIR"; git add -A stable
 if git diff --cached --quiet; then echo "==> gh-pages sin cambios"; else
   git commit -qm "publish: $(cd "$ROOT"; git rev-parse --short HEAD)

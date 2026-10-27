@@ -33,7 +33,7 @@ jobs:
         with:
           persist-credentials: false
       - name: Lint
-        run: bash -n bin/release && bash -n bin/pin-omarchy
+        run: bash -n bin/release && bash -n bin/pin-omarchy && bash -n bin/prune-assets
       - name: Dry-run
         if: github.event_name == 'pull_request' || inputs.dry_run
         env:
@@ -67,3 +67,8 @@ jobs:
             sleep 20
           done
           echo "::error::Pages no sirve aun la db nueva"; exit 1
+      - name: Limpiar assets viejos de pkg-stable
+        if: github.event_name != 'pull_request' && !inputs.dry_run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bin/prune-assets "$RUNNER_TEMP/out/big.txt"
