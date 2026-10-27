@@ -1,0 +1,77 @@
+name: Auto-pin
+
+# ADR-013 fase 1 (fork-docs). Mantiene el par omarchy/omarchy-settings pineado al
+# HEAD de robert-flo/omarchy `personal` sin intervencion y sin secrets nuevos:
+# - compara HEAD de personal (repo publico, git ls-remote) con el _commit pineado;
+# - si difiere: bin/pin-omarchy, commit a main y dispara release.yml (mismo repo,
+#   GITHUB_TOKEN con actions:write; un push de GITHUB_TOKEN no dispara `push`);
+# - si algo falla abre (o comenta) un issue "auto-pin falló". Nunca force-push.
+on:
+  schedule:
+    - cron: '30 11,23 * * *'   # 1h30 despues del upstream-merge del fork (10:00 UTC)
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "repinear aunque el commit no haya cambiado (pkgrel+1)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+concurrency:
+  group: auto-pin
+  cancel-in-progress: false
+
+jobs:
+  pin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Detectar cambios
+        id: d
+        run: |
+          head="$(git ls-remote https://github.com/robert-flo/omarchy.git refs/heads/personal | cut -f1)"
+          pinned="$(awk -F"'" '/^_commit=/{print $2}' pkgbuilds/omarchy/PKGBUILD)"
+          cur="$(awk -F= '/^pkgver=/{print $2}' pkgbuilds/omarchy/PKGBUILD)"
+          up="$(curl -fsSL https://raw.githubusercontent.com/omacom/omarchy-pkgs/master/pkgbuilds/omarchy/PKGBUILD | awk -F= '/^pkgver=/{print $2}')"
+          ver="$(printf '%s\n%s\n' "$cur" "$up" | sort -V | tail -1)"
+          echo "personal=$head pineado=$pinned pkgver actual=$cur upstream=$up -> $ver"
+          echo "head=$head" >> "$GITHUB_OUTPUT"; echo "ver=$ver" >> "$GITHUB_OUTPUT"
+          if [[ "$head" != "$pinned" || "$ver" != "$cur" || "${{ inputs.force }}" == "true" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Sin cambios: nada que hacer."
+          fi
+      - name: Pin
+        if: steps.d.outputs.changed == 'true'
+        run: bin/pin-omarchy "${{ steps.d.outputs.ver }}" "${{ steps.d.outputs.head }}"
+      - name: Commit a main y disparar release
+        if: steps.d.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name "Roberto Flores"
+          git config user.email "25asab015@ujmd.edu.sv"
+          git add pkgbuilds/omarchy pkgbuilds/omarchy-settings
+          git status --porcelain --untracked-files=no | grep -v '^M  pkgbuilds/omarchy' && { echo "::error::cambios inesperados"; exit 1; }
+          rel="$(awk -F= '/^pkgrel=/{print $2}' pkgbuilds/omarchy/PKGBUILD)"
+          git commit -m "chore(pin): omarchy ${{ steps.d.outputs.ver }}-$rel @ ${{ steps.d.outputs.head }}" \
+            -m "Auto-pin (ADR-013 fase 1)." -m "agente: ceo · plataforma: Grok Bot"
+          git push origin HEAD:main
+          gh workflow run release.yml --ref main
+      - name: Issue si falla
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          t="auto-pin falló"
+          url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          n="$(gh issue list --state open --search "\"$t\" in:title" --json number --jq '.[0].number')"
+          if [[ -n "$n" ]]; then gh issue comment "$n" --body "Falló otra vez: $url"
+          else gh issue create --title "$t" --body "El auto-pin falló: $url. Revisa el log; el par sigue en el pin anterior (nada roto en las PCs)."; fi

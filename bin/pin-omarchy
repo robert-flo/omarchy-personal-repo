@@ -15,6 +15,23 @@ prev_rel="$(awk -F= '/^pkgrel=/{print $2}' "$ROOT/pkgbuilds/omarchy/PKGBUILD")"
 if [[ -n "${PKGREL:-}" ]]; then rel="$PKGREL"
 elif [[ "$ver" == "$prev_ver" ]]; then rel=$((prev_rel+1)); else rel=99; fi
 echo "pin: $ver-$rel @ $commit (previo $prev_ver-$prev_rel)"
+# updpkgsums escribe sha256sums sin indentar tras el primer source=() (rama
+# OMARCHY_SRC); makepkg luego falla con "Integrity checks are missing". Mueve el
+# hash a la rama git (else) y deja la rama OMARCHY_SRC con sha256sums=().
+fix_sums() {
+  local f="$1" h
+  h="$(grep -oE "^ *sha256sums=\('[0-9a-f]{64}'\)" "$f" | grep -oE '[0-9a-f]{64}' | tail -1)"
+  [[ -n "$h" ]] || { echo "FAIL: sin sha256sums en $f"; exit 1; }
+  awk -v h="$h" '
+    /^sha256sums=\(/ { next }
+    /^  source=\(\)$/ { print; print "  sha256sums=()"; skip=1; next }
+    skip && /^  sha256sums=\(\)$/ { skip=0; next }
+    { skip=0 }
+    /^  source=\(.*git\+https/ { print; print "  sha256sums=(\x27" h "\x27)"; drop=1; next }
+    drop && /^  sha256sums=/ { drop=0; next }
+    { drop=0; print }' "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+  [[ "$(grep -c "sha256sums=('$h')" "$f")" == 1 ]] || { echo "FAIL: sha256sums mal ubicado en $f"; exit 1; }
+}
 for p in omarchy omarchy-settings; do
   f="$ROOT/pkgbuilds/$p/PKGBUILD"
   curl -fsSL -o "$f" "https://raw.githubusercontent.com/omacom/omarchy-pkgs/master/pkgbuilds/$p/PKGBUILD"
@@ -30,7 +47,9 @@ for p in omarchy omarchy-settings; do
   ( cd "$ROOT/pkgbuilds/$p"
     if command -v updpkgsums >/dev/null; then updpkgsums
     else ${CONTAINER_ENGINE:-docker} run --rm -v "$PWD:/p" archlinux:base-devel bash -euc \
-      'pacman -Sy --noconfirm --needed git pacman-contrib >/dev/null; useradd -m b; chown -R b /p; cd /p; su b -c updpkgsums; chown -R '"$(id -u):$(id -g)"' /p'; fi )
+      'pacman -Sy --noconfirm --needed git pacman-contrib >/dev/null; useradd -m b; chown -R b /p; cd /p; su b -c updpkgsums; rm -rf /p/src /p/omarchy; chown -R '"$(id -u):$(id -g)"' /p'; fi
+    rm -rf src omarchy 2>/dev/null || ${CONTAINER_ENGINE:-docker} unshare rm -rf src omarchy 2>/dev/null || true )
+  fix_sums "$f"
 done
 grep -nE '^(pkgver|pkgrel|_commit)=' "$ROOT"/pkgbuilds/omarchy*/PKGBUILD
 echo "Revisa el diff (dependencias de upstream) y abre un PR a main."
