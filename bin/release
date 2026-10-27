@@ -105,6 +105,23 @@ for d in "$ROOT"/pkgbuilds/*/; do
   done
 done
 
+# --- guard: ningun ravn-* puede instalar archivos de omarchy/omarchy-settings --
+# pacman aborta con "conflicting files" (ravn-webapps 1.1.0 vs omarchy-settings).
+pkglist() { tar --zstd -tf "$1" | grep -v '/$' | grep -v '^\.' | sort -u; }
+base="$(for f in "$REPO"/omarchy-[0-9]*.pkg.tar.zst "$REPO"/omarchy-settings-[0-9]*.pkg.tar.zst; do
+  [[ -f "$f" ]] && pkglist "$f"; done | sort -u)"
+[[ -n "$base" ]] || { echo "FAIL guard: no hay paquetes omarchy/omarchy-settings en $REPO"; exit 1; }
+overlap=0
+for f in "$REPO"/ravn-*.pkg.tar.zst; do
+  [[ -f "$f" ]] || continue
+  dup="$(comm -12 <(pkglist "$f") <(printf '%s\n' "$base"))"
+  if [[ -n "$dup" ]]; then
+    overlap=1; echo "::error::$(basename "$f") instala archivos de omarchy/omarchy-settings:"; echo "$dup" | sed 's/^/    /'
+  fi
+done
+[[ $overlap -eq 0 ]] || { echo "FAIL guard: solapamiento de archivos con omarchy/omarchy-settings"; exit 1; }
+echo "==> guard: sin solapamiento ravn-* vs omarchy/omarchy-settings"
+
 # --- db (repo-add en contenedor, firmas en el host) ---------------------------
 $ENGINE run --rm -v "$REPO:/r" -w /r "$IMAGE" bash -euc 'repo-add -q omarchy.db.tar.zst *.pkg.tar.zst; chown -R '"$(id -u):$(id -g)"' /r'
 cd "$REPO"

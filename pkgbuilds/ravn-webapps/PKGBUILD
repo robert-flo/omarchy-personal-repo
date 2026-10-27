@@ -1,6 +1,6 @@
 # Maintainer: Roberto Flores <robert-flo>
 pkgname=ravn-webapps
-pkgver=1.1.0
+pkgver=1.1.1
 pkgrel=1
 pkgdesc='Lanzadores web/TUI, iconos y launcher de la workstation RaVN (antes applications/ del fork)'
 arch=('any')
@@ -12,7 +12,7 @@ optdepends=('chromium: navegador para las webapps' 'uwsm: aislamiento de apps en
 # Fuente privada: tarball vendoreado (git archive --prefix=${pkgname}-${pkgver}/
 # v${pkgver} | gzip -n), así makepkg no necesita credenciales de GitHub.
 source=("${pkgname}-${pkgver}.tar.gz")
-sha256sums=('0b48b007f15f3d874e1cc344231865c09e6afcb4ec391cc1c73f156db35b977f')
+sha256sums=('3ad46bd7a8ab3cb6050105f592f9b869dace7de2d9be0c509a1749b90b82cabf')
 
 package() {
   make -C "${srcdir}/${pkgname}-${pkgver}" DESTDIR="${pkgdir}" install
