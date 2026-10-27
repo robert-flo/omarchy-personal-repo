@@ -13,7 +13,7 @@ pkgname='omarchy'
 _tag=''
 _commit='8022c26aa172c523468efbc279dd48eee630a1ac'
 pkgver=4.0.6
-pkgrel=103
+pkgrel=104
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
 arch=('any')
 url='https://github.com/basecamp/omarchy'
@@ -30,6 +30,8 @@ depends=(
   # dependency can only be satisfied by the real omarchy-settings built
   # from the same _commit, and forces the pair to upgrade together.
   "omarchy-settings=${pkgver}"
+  # The theme intro videos ship on their own (upstream split), so this package stays small.
+  'omarchy-themes-intros'
 
   # Bootloader stack. Lives here rather than on omarchy-settings because
   # omarchy-settings is also installed into the live ISO env (for plymouth
@@ -127,6 +129,9 @@ package() {
 
   # Theme bundles for theme switching.
   cp -a themes "$pkgdir/usr/share/omarchy/"
+  # Their intro videos ship from omarchy-themes-intros ([omarchy] upstream), into
+  # these same directories; shipping them here conflicts on install.
+  rm -rf "$pkgdir"/usr/share/omarchy/themes/*/backgrounds/intros
 
   # Versioned migrations runner reads from this tree.
   cp -a migrations "$pkgdir/usr/share/omarchy/"
