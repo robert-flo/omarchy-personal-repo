@@ -1,0 +1,32 @@
+name: ci-report
+description: >-
+  Reporte estandar de fallos de workflows (fork-docs, ci-failure). Fallo: busca
+  el issue ABIERTO con label ci-failure:<workflow>; si existe comenta (run + error
+  corto), si no lo crea. Exito: si hay issue abierto, comenta y lo cierra.
+  Solo GITHUB_TOKEN con issues: write.
+inputs:
+  workflow:
+    description: clave estable (upstream-merge, auto-pin, release, overlap-guard)
+    required: true
+  status:
+    description: failure | success
+    required: true
+  error:
+    description: error corto (una o pocas lineas)
+    required: false
+    default: ''
+  token:
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.token }}
+        CI_WORKFLOW: ${{ inputs.workflow }}
+        CI_STATUS: ${{ inputs.status }}
+        CI_ERROR: ${{ inputs.error }}
+        CI_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        GH_REPO: ${{ github.repository }}
+      run: bash "${{ github.action_path }}/ci-report.sh"

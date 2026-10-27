@@ -16,9 +16,15 @@ on:
         description: "true = solo construir y validar"
         type: boolean
         default: false
+      force_fail:
+        description: "prueba ci-report: none | job | guard"
+        type: choice
+        options: [none, job, guard]
+        default: none
 
 permissions:
   contents: write
+  issues: write
 
 concurrency:
   group: release-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'main' }}
@@ -33,12 +39,18 @@ jobs:
         with:
           persist-credentials: false
       - name: Lint
-        run: bash -n bin/release && bash -n bin/pin-omarchy && bash -n bin/prune-assets
+        run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
+          bash -n bin/release && bash -n bin/pin-omarchy && bash -n bin/prune-assets && bash -n .github/actions/ci-report/ci-report.sh
+          [[ "${{ inputs.force_fail }}" != job ]] || { echo "::error::fallo forzado por workflow_dispatch (force_fail=job)"; exit 1; }
       - name: Dry-run
         if: github.event_name == 'pull_request' || inputs.dry_run
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bin/release --out "$RUNNER_TEMP/out"
+          FORCE_GUARD_FAIL: ${{ inputs.force_fail == 'guard' && '1' || '' }}
+        run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
+          bin/release --out "$RUNNER_TEMP/out"
       - name: Checkout gh-pages
         if: github.event_name != 'pull_request' && !inputs.dry_run
         uses: actions/checkout@v4
@@ -51,7 +63,9 @@ jobs:
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
           GH_TOKEN: ${{ github.token }}
           PAGES_DIR: ${{ github.workspace }}/pages
+          FORCE_GUARD_FAIL: ${{ inputs.force_fail == 'guard' && '1' || '' }}
         run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
           [[ -n "$GPG_PRIVATE_KEY" ]] || { echo "::error::Falta el secret GPG_PRIVATE_KEY en este repo"; exit 1; }
           git -C pages config user.name "Roberto Flores"
           git -C pages config user.email "25asab015@ujmd.edu.sv"
@@ -59,6 +73,7 @@ jobs:
       - name: Validar Pages
         if: github.event_name != 'pull_request' && !inputs.dry_run
         run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
           base=https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64
           want="$(tar -xOf "$RUNNER_TEMP/out/stable/x86_64/omarchy-personal.db" --wildcards '*/desc' | awk '/^%FILENAME%$/{getline;print}' | sort)"
           for i in $(seq 1 45); do
@@ -71,4 +86,28 @@ jobs:
         if: github.event_name != 'pull_request' && !inputs.dry_run
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bin/prune-assets "$RUNNER_TEMP/out/big.txt"
+        run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
+          bin/prune-assets "$RUNNER_TEMP/out/big.txt"
+      - name: Resumen de error
+        id: err
+        if: always() && github.event_name != 'pull_request' && !inputs.dry_run
+        run: |
+          log="$RUNNER_TEMP/ci.log"
+          if grep -q 'FAIL guard' "$log" 2>/dev/null; then echo "guard=failure" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ job.status }}" == success ]]; then echo "guard=success" >> "$GITHUB_OUTPUT"; fi
+          { echo "text<<CIEOF"; grep -E '::error::|FAIL' "$log" 2>/dev/null | tail -n 40 || true; echo ---; tail -n 10 "$log" 2>/dev/null; echo CIEOF; } >> "$GITHUB_OUTPUT"
+      - name: Reporte ci-failure (overlap-guard)
+        if: always() && github.event_name != 'pull_request' && !inputs.dry_run && steps.err.outputs.guard != ''
+        uses: ./.github/actions/ci-report
+        with:
+          workflow: overlap-guard
+          status: ${{ steps.err.outputs.guard }}
+          error: ${{ steps.err.outputs.text }}
+      - name: Reporte ci-failure (release)
+        if: always() && github.event_name != 'pull_request' && !inputs.dry_run && steps.err.outputs.guard != 'failure'
+        uses: ./.github/actions/ci-report
+        with:
+          workflow: release
+          status: ${{ job.status }}
+          error: ${{ steps.err.outputs.text }}

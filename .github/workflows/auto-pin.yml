@@ -5,7 +5,7 @@ name: Auto-pin
 # - compara HEAD de personal (repo publico, git ls-remote) con el _commit pineado;
 # - si difiere: bin/pin-omarchy, commit a main y dispara release.yml (mismo repo,
 #   GITHUB_TOKEN con actions:write; un push de GITHUB_TOKEN no dispara `push`);
-# - si algo falla abre (o comenta) un issue "auto-pin falló". Nunca force-push.
+# - fallos: reporte estandar ci-failure:auto-pin (.github/actions/ci-report). Nunca force-push.
 on:
   schedule:
     - cron: '30 11,23 * * *'   # 1h30 despues del upstream-merge del fork (10:00 UTC)
@@ -13,6 +13,10 @@ on:
     inputs:
       force:
         description: "repinear aunque el commit no haya cambiado (pkgrel+1)"
+        type: boolean
+        default: false
+      force_fail:
+        description: "prueba: forzar un fallo (ci-report)"
         type: boolean
         default: false
 
@@ -33,9 +37,15 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: main
+      - name: Fallo forzado (prueba)
+        if: inputs.force_fail
+        run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
+          echo "::error::fallo forzado por workflow_dispatch (force_fail)"; exit 1
       - name: Detectar cambios
         id: d
         run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
           head="$(git ls-remote https://github.com/robert-flo/omarchy.git refs/heads/personal | cut -f1)"
           pinned="$(awk -F"'" '/^_commit=/{print $2}' pkgbuilds/omarchy/PKGBUILD)"
           cur="$(awk -F= '/^pkgver=/{print $2}' pkgbuilds/omarchy/PKGBUILD)"
@@ -50,12 +60,15 @@ jobs:
           fi
       - name: Pin
         if: steps.d.outputs.changed == 'true'
-        run: bin/pin-omarchy "${{ steps.d.outputs.ver }}" "${{ steps.d.outputs.head }}"
+        run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
+          bin/pin-omarchy "${{ steps.d.outputs.ver }}" "${{ steps.d.outputs.head }}"
       - name: Commit a main y disparar release
         if: steps.d.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          exec > >(tee -a "$RUNNER_TEMP/ci.log") 2>&1
           git config user.name "Roberto Flores"
           git config user.email "25asab015@ujmd.edu.sv"
           git add pkgbuilds/omarchy pkgbuilds/omarchy-settings
@@ -65,13 +78,14 @@ jobs:
             -m "Auto-pin (ADR-013 fase 1)." -m "agente: ceo · plataforma: Grok Bot"
           git push origin HEAD:main
           gh workflow run release.yml --ref main
-      - name: Issue si falla
-        if: failure()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          t="auto-pin falló"
-          url="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-          n="$(gh issue list --state open --search "\"$t\" in:title" --json number --jq '.[0].number')"
-          if [[ -n "$n" ]]; then gh issue comment "$n" --body "Falló otra vez: $url"
-          else gh issue create --title "$t" --body "El auto-pin falló: $url. Revisa el log; el par sigue en el pin anterior (nada roto en las PCs)."; fi
+      - name: Resumen de error
+        id: err
+        if: always()
+        run: '{ echo "text<<CIEOF"; tail -n 15 "$RUNNER_TEMP/ci.log" 2>/dev/null; echo CIEOF; } >> "$GITHUB_OUTPUT"'
+      - name: Reporte ci-failure
+        if: always()
+        uses: ./.github/actions/ci-report
+        with:
+          workflow: auto-pin
+          status: ${{ job.status }}
+          error: ${{ steps.err.outputs.text }}
