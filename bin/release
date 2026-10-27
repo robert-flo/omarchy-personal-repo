@@ -17,7 +17,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PAGES_URL="${PAGES_URL:-https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64}"
-REL_URL="${REL_URL:-https://github.com/robert-flo/omarchy-personal-repo/releases/download/pkg-stable}"
+
 REPO_SLUG="${REPO_SLUG:-robert-flo/omarchy-personal-repo}"
 ENGINE="${CONTAINER_ENGINE:-docker}"
 IMAGE="${IMAGE:-archlinux:base-devel}"
@@ -66,6 +66,9 @@ if [[ -f "$ROOT/pkgbuilds/omarchy/PKGBUILD" ]]; then
   fi
 fi
 
+# El repo es privado: los assets de pkg-stable se bajan con gh (GH_TOKEN), no con curl.
+fetch() { curl -fsSL -o "$REPO/$1" "$PAGES_URL/$1" 2>/dev/null && return 0
+  gh release download pkg-stable -R "$REPO_SLUG" -p "$1" -D "$REPO" --clobber; }
 # --- reusar o construir ------------------------------------------------------
 BUILT=()
 for d in "$ROOT"/pkgbuilds/*/; do
@@ -73,8 +76,7 @@ for d in "$ROOT"/pkgbuilds/*/; do
   for f in $(pkgfiles "$d"); do
     if [[ -n "${PUB[$f]:-}" ]]; then
       echo "==> $name: reusa $f"
-      curl -fsSL -o "$REPO/$f" "$PAGES_URL/$f" || curl -fsSL -o "$REPO/$f" "$REL_URL/$f"
-      curl -fsSL -o "$REPO/$f.sig" "$PAGES_URL/$f.sig" || curl -fsSL -o "$REPO/$f.sig" "$REL_URL/$f.sig"
+      fetch "$f"; fetch "$f.sig"
     else need=1; fi
   done
   [[ $need -eq 1 ]] || continue
