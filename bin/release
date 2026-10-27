@@ -40,6 +40,7 @@ if [[ -n "${GPG_KEY_ID:-}" ]]; then SIGN=1; echo "==> firmando con $GPG_KEY_ID"
 else echo "==> sin clave de firma: los paquetes nuevos quedan SIN firma (solo vale para dry-run)"
   [[ $PUBLISH -eq 1 ]] && { echo "ABORT: --publish requiere clave"; exit 1; }; fi
 sign() { gpg --batch --yes --local-user "$GPG_KEY_ID" --detach-sign "$@"; }
+signed_by_current() { gpg --batch --status-fd 1 --verify "$1.sig" "$1" 2>/dev/null | grep -Eq "VALIDSIG .*${GPG_KEY_ID}( |$)"; }
 
 # --- estado publicado -------------------------------------------------------
 declare -A PUB=()   # filename -> 1
@@ -70,13 +71,17 @@ fi
 fetch() { curl -fsSL -o "$REPO/$1" "$PAGES_URL/$1" 2>/dev/null && return 0
   gh release download pkg-stable -R "$REPO_SLUG" -p "$1" -D "$REPO" --clobber; }
 # --- reusar o construir ------------------------------------------------------
-BUILT=()
+BUILT=(); RESIGNED=()
 for d in "$ROOT"/pkgbuilds/*/; do
   name="$(basename "$d")"; need=0
   for f in $(pkgfiles "$d"); do
     if [[ -n "${PUB[$f]:-}" ]]; then
       echo "==> $name: reusa $f"
       fetch "$f"; fetch "$f.sig"
+      # Rotacion de clave (ADR-0002): si la firma publicada no es de la clave
+      # actual, se refirma el mismo binario.
+      if [[ $SIGN -eq 1 ]] && ! signed_by_current "$REPO/$f"; then
+        echo "==> $name: refirma $f con $GPG_KEY_ID"; sign "$REPO/$f"; RESIGNED+=("$f"); fi
     else need=1; fi
   done
   [[ $need -eq 1 ]] || continue
@@ -107,6 +112,7 @@ if [[ $SIGN -eq 1 ]]; then
   for f in omarchy.db omarchy.files omarchy-personal.db omarchy-personal.files; do sign --armor --output "$f.sig" "$f"; done
 fi
 echo "==> construidos: ${BUILT[*]:-(ninguno)}"
+echo "==> refirmados: ${RESIGNED[*]:-(ninguno)}"
 echo "==> arbol final:"; ls -l "$REPO"
 echo "==> db resultante:"; tar -xOf omarchy-personal.db --wildcards '*/desc' | awk '/^%FILENAME%$/{getline; print "    "$0}' | sort
 
@@ -119,14 +125,17 @@ gh release view pkg-stable -R "$REPO_SLUG" >/dev/null 2>&1 || \
   gh release create pkg-stable -R "$REPO_SLUG" --title "Paquetes grandes del repo personal" --notes "Assets >90MB, segundo Server de [omarchy-personal]."
 existing="$(gh release view pkg-stable -R "$REPO_SLUG" --json assets -q '.assets[].name')"
 for f in $BIG; do
-  grep -qx "$f" <<<"$existing" || gh release upload pkg-stable -R "$REPO_SLUG" "$f" "$f.sig"
+  grep -qx "$f" <<<"$existing" || gh release upload pkg-stable -R "$REPO_SLUG" "$f"
+  gh release upload pkg-stable -R "$REPO_SLUG" "$f.sig" --clobber
 done
 # Los assets viejos NO se borran aqui: la db vieja los referencia hasta que Pages
 # sirva la nueva. bin/prune-assets lo hace despues de validar Pages.
 printf '%s\n' $BIG > "$OUT/big.txt"
 dst="$PAGES_DIR/stable/x86_64"; rm -rf "$dst"; mkdir -p "$dst"
 for f in *; do if [[ -n "$BIG" ]] && grep -Fqx -- "${f%.sig}" <<<"$BIG"; then continue; fi; cp -a "$f" "$dst/"; done
-cd "$PAGES_DIR"; git add -A stable
+# Clave publica de firma servida en Pages (keys/), fuente: keys/ de main.
+rm -rf "$PAGES_DIR/keys"; cp -a "$ROOT/keys" "$PAGES_DIR/keys"
+cd "$PAGES_DIR"; git add -A stable keys
 if git diff --cached --quiet; then echo "==> gh-pages sin cambios"; else
   git commit -qm "publish: $(cd "$ROOT"; git rev-parse --short HEAD)
 

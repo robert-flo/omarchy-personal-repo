@@ -43,5 +43,5 @@
   minutos del plan (~10–20 min por release; Pages en repo privado requiere plan de pago).
 - pacman.conf no cambia (misma URL de Pages y mismo release `pkg-stable`).
 - Sincronizar PKGBUILDs de upstream (omarchy) pasa a ser un paso explícito (`bin/pin-omarchy` + PR).
-- La clave GPG (`76AFFCC217DB9FC4`, ADR-006 del scratchpad) se carga como secret aquí; si
+- (Rotada en ADR-0002: ahora `14EDEAC8B295BB30CA6249A9E954119B629B58F6`.) La clave GPG (`76AFFCC217DB9FC4`, ADR-006 del scratchpad) se carga como secret aquí; si
   no hay copia fuera del secret del fork, hay que rotarla (ADR-006, pasos 1–6).
