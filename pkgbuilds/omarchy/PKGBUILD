@@ -11,9 +11,9 @@
 #    omarchy-settings must always carry identical _tag/_commit/pkgver/sha256sums.
 pkgname='omarchy'
 _tag=''
-_commit='c55258224b02f2b979fbc762fb937e11de3a6990'
+_commit='da54d02ce59360f4a19f50c19c3f47480ca144d9'
 pkgver=4.0.6
-pkgrel=107
+pkgrel=108
 pkgdesc='Beautiful, modern, and opinionated Arch Linux by DHH'
 # The payload is architecture-independent, but the dependency set is not: the
 # boot stack differs per architecture (see depends_x86_64 / depends_aarch64),
@@ -25,6 +25,8 @@ conflicts=('omarchy-dev')
 # Hard depends: only packages whose removal would brick the desktop. The ISO
 # pacstraps the full default install set from install/omarchy-base.packages.
 depends=(
+  # Capa personal RaVN (inyectado por bin/pin-omarchy, ADR-013)
+  'ravn-omarchy-overlay'
   # Omarchy meta
   'omarchy-keyring'
   # The theme intro videos ship on their own, so this package stays small.
@@ -97,7 +99,7 @@ if [[ -n "${OMARCHY_SRC:-}" ]]; then
   sha256sums=()
 else
   source=("omarchy::git+https://github.com/robert-flo/omarchy.git#commit=${_commit}")
-  sha256sums=('f7a9a11dd2598e5a5ba17c0225092d65e71f471e6f44945e4a2077fc8fe84de0')
+  sha256sums=('430e7eef4f06fe9fe1557f9b8aab4f064783a0da5dd98912873115bfe18eea01')
 fi
 
 prepare() {
