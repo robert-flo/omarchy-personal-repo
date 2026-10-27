@@ -112,6 +112,7 @@ base="$(for f in "$REPO"/omarchy-[0-9]*.pkg.tar.zst "$REPO"/omarchy-settings-[0-
   [[ -f "$f" ]] && pkglist "$f"; done | sort -u)"
 [[ -n "$base" ]] || { echo "FAIL guard: no hay paquetes omarchy/omarchy-settings en $REPO"; exit 1; }
 overlap=0
+if [[ -n "${FORCE_GUARD_FAIL:-}" ]]; then overlap=1; echo "::error::guard: fallo forzado (FORCE_GUARD_FAIL)"; fi
 for f in "$REPO"/ravn-*.pkg.tar.zst; do
   [[ -f "$f" ]] || continue
   dup="$(comm -12 <(pkglist "$f") <(printf '%s\n' "$base"))"
