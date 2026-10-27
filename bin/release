@@ -1,0 +1,134 @@
+#!/usr/bin/env bash
+# Construye, firma y arma el repo pacman [omarchy-personal] desde pkgbuilds/.
+# Corre igual en CI (release.yml) y en local (fallback, ADR-0001).
+#
+# Uso: bin/release [--publish] [--out DIR]
+#   sin --publish: dry-run (arma el arbol en DIR, no publica nada).
+#   --publish: ademas copia el arbol a la rama gh-pages (worktree en $PAGES_DIR)
+#              y sube los paquetes >90MB al release pkg-stable (gh, GH_TOKEN).
+# Entorno:
+#   GPG_PRIVATE_KEY  (CI) clave privada exportada; se importa a un GNUPGHOME temporal.
+#   GPG_KEY_ID       (local) id de la clave ya presente en tu keyring (p. ej. tras
+#                    descifrarla con age a un GNUPGHOME efimero). Sin clave: dry-run sin firmas.
+#   CONTAINER_ENGINE docker (default) o podman.
+# Reglas: un paquete cuya version ya esta en la db publicada NO se reconstruye;
+# se reutiliza el archivo publicado (mismo binario, misma firma). Solo se
+# construye lo que cambio de pkgver/pkgrel.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PAGES_URL="${PAGES_URL:-https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64}"
+
+REPO_SLUG="${REPO_SLUG:-robert-flo/omarchy-personal-repo}"
+ENGINE="${CONTAINER_ENGINE:-docker}"
+IMAGE="${IMAGE:-archlinux:base-devel}"
+BIG_BYTES=$((90*1024*1024))
+PUBLISH=0; OUT="$ROOT/out"
+while [[ $# -gt 0 ]]; do case "$1" in
+  --publish) PUBLISH=1;; --out) OUT="$2"; shift;;
+  *) echo "arg desconocido: $1" >&2; exit 2;; esac; shift; done
+REPO="$OUT/stable/x86_64"; WORK="$OUT/work"
+rm -rf "$OUT"; mkdir -p "$REPO" "$WORK"
+
+# --- clave de firma ---------------------------------------------------------
+SIGN=0
+if [[ -n "${GPG_PRIVATE_KEY:-}" ]]; then
+  export GNUPGHOME="$(mktemp -d)"; chmod 700 "$GNUPGHOME"
+  gpg --batch --quiet --import <<<"$GPG_PRIVATE_KEY"
+  GPG_KEY_ID="$(gpg --batch --with-colons --list-secret-keys | awk -F: '/^sec/{print $5; exit}')"
+fi
+if [[ -n "${GPG_KEY_ID:-}" ]]; then SIGN=1; echo "==> firmando con $GPG_KEY_ID"
+else echo "==> sin clave de firma: los paquetes nuevos quedan SIN firma (solo vale para dry-run)"
+  [[ $PUBLISH -eq 1 ]] && { echo "ABORT: --publish requiere clave"; exit 1; }; fi
+sign() { gpg --batch --yes --local-user "$GPG_KEY_ID" --detach-sign "$@"; }
+
+# --- estado publicado -------------------------------------------------------
+declare -A PUB=()   # filename -> 1
+if curl -fsSL -o "$WORK/cur.db" "$PAGES_URL/omarchy-personal.db"; then
+  while read -r f; do PUB["$f"]=1; done < <(tar -xOf "$WORK/cur.db" --wildcards '*/desc' | awk '/^%FILENAME%$/{getline; print}')
+fi
+echo "==> db publicada: ${#PUB[@]} paquetes"; printf '    %s\n' "${!PUB[@]}" | sort
+
+# --- version guard: omarchy personal >= estable oficial ----------------------
+pkgfiles() { # dir -> nombres de archivo esperados
+  ( cd "$1"; source ./PKGBUILD >/dev/null 2>&1
+    a=x86_64; [[ " ${arch[*]} " == *" any "* ]] && a=any
+    v="$pkgver-$pkgrel"; [[ -n "${epoch:-}" ]] && v="$epoch:$v"
+    for n in "${pkgname[@]}"; do echo "$n-$v-$a.pkg.tar.zst"; done )
+}
+if [[ -f "$ROOT/pkgbuilds/omarchy/PKGBUILD" ]]; then
+  mine="$( cd "$ROOT/pkgbuilds/omarchy"; source ./PKGBUILD >/dev/null 2>&1; echo "$pkgver-$pkgrel")"
+  off="$(curl -fsSL https://pkgs.omarchy.org/stable/x86_64/omarchy.db.tar.zst | tar --zstd -xOf - --wildcards 'omarchy-[0-9]*/desc' 2>/dev/null \
+        | awk '/^%NAME%$/{getline;n=$0} /^%VERSION%$/{getline; if(n=="omarchy"){print; exit}}' || true)"
+  echo "==> omarchy personal $mine / oficial ${off:-?}"
+  if [[ -n "$off" ]]; then
+    c="$($ENGINE run --rm "$IMAGE" vercmp "$mine" "$off")"
+    [[ "$c" -ge 0 ]] || { echo "ABORT: omarchy personal ($mine) por detras del oficial ($off). Ver bin/pin-omarchy."; exit 1; }
+  fi
+fi
+
+# El repo es privado: los assets de pkg-stable se bajan con gh (GH_TOKEN), no con curl.
+fetch() { curl -fsSL -o "$REPO/$1" "$PAGES_URL/$1" 2>/dev/null && return 0
+  gh release download pkg-stable -R "$REPO_SLUG" -p "$1" -D "$REPO" --clobber; }
+# --- reusar o construir ------------------------------------------------------
+BUILT=()
+for d in "$ROOT"/pkgbuilds/*/; do
+  name="$(basename "$d")"; need=0
+  for f in $(pkgfiles "$d"); do
+    if [[ -n "${PUB[$f]:-}" ]]; then
+      echo "==> $name: reusa $f"
+      fetch "$f"; fetch "$f.sig"
+    else need=1; fi
+  done
+  [[ $need -eq 1 ]] || continue
+  echo "==> $name: construye $(pkgfiles "$d" | tr '\n' ' ')"
+  rm -rf "$WORK/$name"; cp -a "$d" "$WORK/$name"
+  $ENGINE run --rm -v "$WORK/$name:/pkg" "$IMAGE" bash -euc '
+    pacman -Syu --noconfirm --needed git >/dev/null
+    useradd -m b; chown -R b /pkg; cd /pkg
+    mk=$(su b -c "source ./PKGBUILD >/dev/null 2>&1; echo \${makedepends[@]} \${makedepends_x86_64[@]}")
+    [[ -n "$mk" ]] && pacman -S --noconfirm --needed $mk
+    su b -c "makepkg -f --nodeps --nocheck --noconfirm"
+    chown -R '"$(id -u):$(id -g)"' /pkg'
+  for f in $(pkgfiles "$d"); do
+    [[ -f "$WORK/$name/$f" ]] || { echo "FAIL: falta $f tras makepkg"; exit 1; }
+    mv "$WORK/$name/$f" "$REPO/"; BUILT+=("$f")
+    [[ $SIGN -eq 1 ]] && sign "$REPO/$f"
+  done
+done
+
+# --- db (repo-add en contenedor, firmas en el host) ---------------------------
+$ENGINE run --rm -v "$REPO:/r" -w /r "$IMAGE" bash -euc 'repo-add -q omarchy.db.tar.zst *.pkg.tar.zst; chown -R '"$(id -u):$(id -g)"' /r'
+cd "$REPO"
+for k in db files; do
+  rm -f omarchy.$k; cp omarchy.$k.tar.zst omarchy.$k; cp omarchy.$k.tar.zst omarchy-personal.$k
+  rm -f omarchy.$k.tar.zst.old
+done
+if [[ $SIGN -eq 1 ]]; then
+  for f in omarchy.db omarchy.files omarchy-personal.db omarchy-personal.files; do sign --armor --output "$f.sig" "$f"; done
+fi
+echo "==> construidos: ${BUILT[*]:-(ninguno)}"
+echo "==> arbol final:"; ls -l "$REPO"
+echo "==> db resultante:"; tar -xOf omarchy-personal.db --wildcards '*/desc' | awk '/^%FILENAME%$/{getline; print "    "$0}' | sort
+
+[[ $PUBLISH -eq 1 ]] || { echo "==> dry-run: nada publicado"; exit 0; }
+
+# --- publicar -----------------------------------------------------------------
+: "${PAGES_DIR:?PAGES_DIR (checkout de gh-pages) requerido para --publish}"
+BIG="$(find . -maxdepth 1 -name '*.pkg.tar.zst' -size +${BIG_BYTES}c -printf '%f\n' | sort)"
+gh release view pkg-stable -R "$REPO_SLUG" >/dev/null 2>&1 || \
+  gh release create pkg-stable -R "$REPO_SLUG" --title "Paquetes grandes del repo personal" --notes "Assets >90MB, segundo Server de [omarchy-personal]."
+existing="$(gh release view pkg-stable -R "$REPO_SLUG" --json assets -q '.assets[].name')"
+for f in $BIG; do
+  grep -qx "$f" <<<"$existing" || gh release upload pkg-stable -R "$REPO_SLUG" "$f" "$f.sig"
+done
+# Los assets viejos NO se borran aqui: la db vieja los referencia hasta que Pages
+# sirva la nueva. bin/prune-assets lo hace despues de validar Pages.
+printf '%s\n' $BIG > "$OUT/big.txt"
+dst="$PAGES_DIR/stable/x86_64"; rm -rf "$dst"; mkdir -p "$dst"
+for f in *; do if [[ -n "$BIG" ]] && grep -Fqx -- "${f%.sig}" <<<"$BIG"; then continue; fi; cp -a "$f" "$dst/"; done
+cd "$PAGES_DIR"; git add -A stable
+if git diff --cached --quiet; then echo "==> gh-pages sin cambios"; else
+  git commit -qm "publish: $(cd "$ROOT"; git rev-parse --short HEAD)
+
+agente: ceo · plataforma: Grok Bot"
+  git push -q origin HEAD:gh-pages; echo "==> gh-pages publicado"; fi

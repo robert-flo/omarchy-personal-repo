@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# Borra del release pkg-stable los assets que la db nueva ya no usa.
+# Correr SOLO despues de que Pages sirva la db nueva. Uso: bin/prune-assets <out>/big.txt
+set -euo pipefail
+REPO_SLUG="${REPO_SLUG:-robert-flo/omarchy-personal-repo}"; keep="${1:?big.txt}"
+[[ -f "${1:-}" && -r "$1" ]] || { echo "manifest ilegible: ${1:-}" >&2; exit 1; }
+gh release view pkg-stable -R "$REPO_SLUG" --json assets -q '.assets[].name' | while read -r a; do
+  [[ -z "$a" ]] && continue
+  grep -Fqx -- "${a%.sig}" "$keep" || { echo "borra $a"; gh release delete-asset pkg-stable "$a" -R "$REPO_SLUG" -y; }
+done

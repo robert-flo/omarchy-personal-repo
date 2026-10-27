@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Repinea el par omarchy/omarchy-settings al commit de robert-flo/omarchy `personal`.
+# Lee (solo lectura) los PKGBUILD de omacom/omarchy-pkgs master como base, cambia la
+# fuente a robert-flo/omarchy y aplica pkgrel §5.3: pkgver nuevo -> 99; mismo pkgver
+# -> pkgrel anterior + 1. NO toca ningun otro repo: el resultado se commitea aqui por PR.
+# Uso: bin/pin-omarchy <pkgver> [commit]   (commit default: HEAD de robert-flo/omarchy personal)
+#      PKGREL=NNN bin/pin-omarchy ...      override manual
+# Requiere: curl, git, y makepkg (o CONTAINER_ENGINE) para updpkgsums.
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+ver="${1:?pkgver, p. ej. 4.0.7}"; ver="${ver#v}"
+commit="${2:-$(git ls-remote https://github.com/robert-flo/omarchy.git refs/heads/personal | cut -f1)}"
+prev_ver="$(awk -F= '/^pkgver=/{print $2}' "$ROOT/pkgbuilds/omarchy/PKGBUILD")"
+prev_rel="$(awk -F= '/^pkgrel=/{print $2}' "$ROOT/pkgbuilds/omarchy/PKGBUILD")"
+if [[ -n "${PKGREL:-}" ]]; then rel="$PKGREL"
+elif [[ "$ver" == "$prev_ver" ]]; then rel=$((prev_rel+1)); else rel=99; fi
+echo "pin: $ver-$rel @ $commit (previo $prev_ver-$prev_rel)"
+for p in omarchy omarchy-settings; do
+  f="$ROOT/pkgbuilds/$p/PKGBUILD"
+  curl -fsSL -o "$f" "https://raw.githubusercontent.com/omacom/omarchy-pkgs/master/pkgbuilds/$p/PKGBUILD"
+  if [[ $p == omarchy-settings ]]; then
+    curl -fsSL -o "$ROOT/pkgbuilds/$p/omarchy-settings.install" \
+      "https://raw.githubusercontent.com/omacom/omarchy-pkgs/master/pkgbuilds/$p/omarchy-settings.install" || true
+  fi
+  sed -i -E \
+    -e "s#git\+https://github.com/[^/]+/omarchy(\.git)?#git+https://github.com/robert-flo/omarchy.git#" \
+    -e "s/^_commit=.*/_commit='$commit'/" -e "s/^_tag=.*/_tag=''/" \
+    -e "s/^pkgver=.*/pkgver=$ver/" -e "s/^pkgrel=.*/pkgrel=$rel/" "$f"
+  grep -q "robert-flo/omarchy.git" "$f" || { echo "FAIL: no pude reapuntar la fuente en $p"; exit 1; }
+  ( cd "$ROOT/pkgbuilds/$p"
+    if command -v updpkgsums >/dev/null; then updpkgsums
+    else ${CONTAINER_ENGINE:-docker} run --rm -v "$PWD:/p" archlinux:base-devel bash -euc \
+      'pacman -Sy --noconfirm --needed git pacman-contrib >/dev/null; useradd -m b; chown -R b /p; cd /p; su b -c updpkgsums; chown -R '"$(id -u):$(id -g)"' /p'; fi )
+done
+grep -nE '^(pkgver|pkgrel|_commit)=' "$ROOT"/pkgbuilds/omarchy*/PKGBUILD
+echo "Revisa el diff (dependencias de upstream) y abre un PR a main."
