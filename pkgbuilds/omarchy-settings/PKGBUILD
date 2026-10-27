@@ -132,9 +132,10 @@ _etc_override_paths=(
 # build from a local source tree instead (mirrors omarchy-zsh/omarchy-fish DX).
 if [[ -n "${OMARCHY_SRC:-}" ]]; then
   source=()
-sha256sums=('00c726c489e32c384e5c2859f592b5b09636c1efd6bd9ba7e7b8ad7d2b3322e1')
+  sha256sums=()
 else
   source=("omarchy::git+https://github.com/robert-flo/omarchy.git#commit=${_commit}")
+  sha256sums=('00c726c489e32c384e5c2859f592b5b09636c1efd6bd9ba7e7b8ad7d2b3322e1')
 fi
 
 prepare() {
