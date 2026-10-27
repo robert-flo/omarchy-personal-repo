@@ -43,6 +43,11 @@ for p in omarchy omarchy-settings; do
     -e "s#git\+https://github.com/[^/]+/omarchy(\.git)?#git+https://github.com/robert-flo/omarchy.git#" \
     -e "s/^_commit=.*/_commit='$commit'/" -e "s/^_tag=.*/_tag=''/" \
     -e "s/^pkgver=.*/pkgver=$ver/" -e "s/^pkgrel=.*/pkgrel=$rel/" "$f"
+  # ADR-013 fase 2: la capa personal vive en ravn-omarchy-overlay; omarchy la arrastra.
+  if [[ $p == omarchy ]] && ! grep -q "'ravn-omarchy-overlay'" "$f"; then
+    sed -i "0,/^depends=(/s//depends=(\n  # Capa personal RaVN (inyectado por bin\/pin-omarchy, ADR-013)\n  'ravn-omarchy-overlay'/" "$f"
+    grep -q "'ravn-omarchy-overlay'" "$f" || { echo "FAIL: no pude inyectar ravn-omarchy-overlay"; exit 1; }
+  fi
   grep -q "robert-flo/omarchy.git" "$f" || { echo "FAIL: no pude reapuntar la fuente en $p"; exit 1; }
   ( cd "$ROOT/pkgbuilds/$p"
     if command -v updpkgsums >/dev/null; then updpkgsums

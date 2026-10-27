@@ -1,0 +1,23 @@
+# Maintainer: Roberto Flores <robert-flo>
+# Capa personal sobre omarchy (ADR-013 fase 2): lo que antes vivia como cambios
+# en robert-flo/omarchy. bin/pin-omarchy inyecta este paquete en depends del
+# omarchy pineado, asi omarchy update lo instala solo.
+pkgname=ravn-omarchy-overlay
+pkgver=0.1.0
+pkgrel=1
+pkgdesc='Capa personal RaVN para omarchy: hypr, bash, webapps y paquetes extra'
+arch=('any')
+url='https://github.com/robert-flo/omarchy-personal-repo'
+license=('MIT')
+options=('!debug')
+depends=('ravn-webapps>=1.1.0' 'meld' 'ncdu' 'spotify')
+source=('ravn.lua' 'scrolling.lua' 'browser-workspaces.lua' 'dev-workspaces.lua' 'env' 'rc')
+sha256sums=('461d5642ee582fa8d07998abe834ba7617419b2b72fe21461826fb909dd23d32' '2a7cfebff178e1d368c1dcffb708b3f7ceddbbbbd41f5f0f979d6b434bb70afd' '84dddee12691fe07d3f68b7415bcf83c5673d0705117dce39df4febce2167c24' '031e6ac639daa18d763fa34659e0b1dcdb91681ba41ee8dc8c3f5f4378c91a11' '7679a9d828283863f02b60b923cc8957a554d5a58e21c456c6536fcb4e5559cc' '4b1d5863a08789d48fca4d524809a82cd2ccf9ff17f4e316a75adc036d77ceb9' )
+
+package() {
+  local h="$pkgdir/usr/share/omarchy/default/hypr"
+  install -Dm644 ravn.lua "$h/ravn.lua"
+  install -Dm644 -t "$h/ravn" scrolling.lua browser-workspaces.lua dev-workspaces.lua
+  install -Dm644 env "$pkgdir/usr/share/ravn/omarchy/bash/env"
+  install -Dm644 rc "$pkgdir/usr/share/ravn/omarchy/bash/rc"
+}
