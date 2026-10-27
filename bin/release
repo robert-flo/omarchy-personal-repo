@@ -87,7 +87,8 @@ for d in "$ROOT"/pkgbuilds/*/; do
     useradd -m b; chown -R b /pkg; cd /pkg
     mk=$(su b -c "source ./PKGBUILD >/dev/null 2>&1; echo \${makedepends[@]} \${makedepends_x86_64[@]}")
     [[ -n "$mk" ]] && pacman -S --noconfirm --needed $mk
-    su b -c "makepkg -f --nodeps --nocheck --noconfirm"'
+    su b -c "makepkg -f --nodeps --nocheck --noconfirm"
+    chown -R '"$(id -u):$(id -g)"' /pkg'
   for f in $(pkgfiles "$d"); do
     [[ -f "$WORK/$name/$f" ]] || { echo "FAIL: falta $f tras makepkg"; exit 1; }
     mv "$WORK/$name/$f" "$REPO/"; BUILT+=("$f")
