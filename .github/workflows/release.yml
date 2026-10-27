@@ -1,0 +1,67 @@
+name: Release
+
+# ADR-0001 (opcion D). Unico workflow del repo de fuentes.
+# - pull_request: dry-run (construye lo nuevo, arma la db, no firma ni publica).
+# - push a main en pkgbuilds/** o bin/** y workflow_dispatch: firma y publica a
+#   gh-pages + release pkg-stable con GITHUB_TOKEN. Sin cron, sin rebase, sin
+#   pushes a otros repos.
+on:
+  pull_request:
+  push:
+    branches: [main]
+    paths: ['pkgbuilds/**', 'bin/**']
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "true = solo construir y validar"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.event_name == 'pull_request' && github.event.pull_request.number || 'main' }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Lint
+        run: bash -n bin/release && bash -n bin/pin-omarchy
+      - name: Dry-run
+        if: github.event_name == 'pull_request' || inputs.dry_run
+        run: bin/release --out "$RUNNER_TEMP/out"
+      - name: Checkout gh-pages
+        if: github.event_name != 'pull_request' && !inputs.dry_run
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          path: pages
+      - name: Firmar y publicar
+        if: github.event_name != 'pull_request' && !inputs.dry_run
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+          PAGES_DIR: ${{ github.workspace }}/pages
+        run: |
+          [[ -n "$GPG_PRIVATE_KEY" ]] || { echo "::error::Falta el secret GPG_PRIVATE_KEY en este repo"; exit 1; }
+          git -C pages config user.name "Roberto Flores"
+          git -C pages config user.email "25asab015@ujmd.edu.sv"
+          bin/release --publish --out "$RUNNER_TEMP/out"
+      - name: Validar Pages
+        if: github.event_name != 'pull_request' && !inputs.dry_run
+        run: |
+          base=https://robert-flo.github.io/omarchy-personal-repo/stable/x86_64
+          want="$(tar -xOf "$RUNNER_TEMP/out/stable/x86_64/omarchy-personal.db" --wildcards '*/desc' | awk '/^%FILENAME%$/{getline;print}' | sort)"
+          for i in $(seq 1 45); do
+            got="$(curl -fsSL "$base/omarchy-personal.db" 2>/dev/null | tar -xOf - --zstd --wildcards '*/desc' 2>/dev/null | awk '/^%FILENAME%$/{getline;print}' | sort || true)"
+            [[ "$got" == "$want" ]] && { echo "OK: Pages sirve la db nueva"; echo "$got"; exit 0; }
+            sleep 20
+          done
+          echo "::error::Pages no sirve aun la db nueva"; exit 1
