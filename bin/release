@@ -51,13 +51,16 @@ echo "==> db publicada: ${#PUB[@]} paquetes"; printf '    %s\n' "${!PUB[@]}" | s
 
 # --- version guard: omarchy personal >= estable oficial ----------------------
 pkgfiles() { # dir -> nombres de archivo esperados
-  ( cd "$1"; source ./PKGBUILD >/dev/null 2>&1
+  # PKGBUILDs de upstream usan $CARCH; con set -u el source moria en silencio y el
+  # paquete se omitia de la db (omarchy-settings 4.0.6-105). Falla fuerte si no hay pkgname.
+  ( cd "$1"; set +u; CARCH=x86_64; source ./PKGBUILD >/dev/null 2>&1
+    [[ -n "${pkgname:-}" ]] || { echo "FAIL: no pude leer $1/PKGBUILD" >&2; exit 1; }
     a=x86_64; [[ " ${arch[*]} " == *" any "* ]] && a=any
     v="$pkgver-$pkgrel"; [[ -n "${epoch:-}" ]] && v="$epoch:$v"
     for n in "${pkgname[@]}"; do echo "$n-$v-$a.pkg.tar.zst"; done )
 }
 if [[ -f "$ROOT/pkgbuilds/omarchy/PKGBUILD" ]]; then
-  mine="$( cd "$ROOT/pkgbuilds/omarchy"; source ./PKGBUILD >/dev/null 2>&1; echo "$pkgver-$pkgrel")"
+  mine="$( cd "$ROOT/pkgbuilds/omarchy"; set +u; CARCH=x86_64; source ./PKGBUILD >/dev/null 2>&1; echo "$pkgver-$pkgrel")"
   off="$(curl -fsSL https://pkgs.omarchy.org/stable/x86_64/omarchy.db.tar.zst | tar --zstd -xOf - --wildcards 'omarchy-[0-9]*/desc' 2>/dev/null \
         | awk '/^%NAME%$/{getline;n=$0} /^%VERSION%$/{getline; if(n=="omarchy"){print; exit}}' || true)"
   echo "==> omarchy personal $mine / oficial ${off:-?}"
@@ -74,7 +77,8 @@ fetch() { curl -fsSL -o "$REPO/$1" "$PAGES_URL/$1" 2>/dev/null && return 0
 BUILT=(); RESIGNED=()
 for d in "$ROOT"/pkgbuilds/*/; do
   name="$(basename "$d")"; need=0
-  for f in $(pkgfiles "$d"); do
+  files="$(pkgfiles "$d")" || exit 1
+  for f in $files; do
     if [[ -n "${PUB[$f]:-}" ]]; then
       echo "==> $name: reusa $f"
       fetch "$f"; fetch "$f.sig"
@@ -90,7 +94,7 @@ for d in "$ROOT"/pkgbuilds/*/; do
   $ENGINE run --rm -v "$WORK/$name:/pkg" "$IMAGE" bash -euc '
     pacman -Syu --noconfirm --needed git >/dev/null
     useradd -m b; chown -R b /pkg; cd /pkg
-    mk=$(su b -c "source ./PKGBUILD >/dev/null 2>&1; echo \${makedepends[@]} \${makedepends_x86_64[@]}")
+    mk=$(su b -c "CARCH=x86_64; source ./PKGBUILD >/dev/null 2>&1; echo \${makedepends[@]} \${makedepends_x86_64[@]}")
     [[ -n "$mk" ]] && pacman -S --noconfirm --needed $mk
     su b -c "makepkg -f --nodeps --nocheck --noconfirm"
     chown -R '"$(id -u):$(id -g)"' /pkg'
