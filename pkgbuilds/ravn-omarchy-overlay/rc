@@ -5,3 +5,9 @@ alias agy="$HOME/.local/bin/agy"
 export ANDROID_HOME="$HOME/Android/Sdk"
 export ANDROID_USER_HOME="$HOME/.android"
 export PATH="$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools:$ANDROID_HOME/cmdline-tools/latest/bin"
+
+# Drop-ins de bash de otros paquetes ravn (p. ej. ravn-sessionizer: alias rs/ri).
+for _ravn_rc in /usr/share/ravn/bash/rc.d/*.bash; do
+  [[ -r "$_ravn_rc" ]] && source "$_ravn_rc"
+done
+unset _ravn_rc
