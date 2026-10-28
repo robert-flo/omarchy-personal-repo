@@ -1,5 +1,5 @@
 pkgname=ravn-sessionizer
-pkgver=0.2.0.r6.4f7e83e
+pkgver=0.2.0.r7.a89da0c
 pkgrel=1
 pkgdesc='Sessionizer para herdr: workspaces, repos, pj-* y agentes en un fzf; tríos desde los issues de todos los proyectos'
 arch=('any')
@@ -16,7 +16,7 @@ backup=('etc/ravn/sessionizer.conf')
 # <sha> | gzip -n; pkgver = base.r<N>.<shortsha> como en ravn-sessionizer-arch), así makepkg no necesita credenciales de GitHub.
 source=("${pkgname}-${pkgver}.tar.gz")
 sha256sums=(
-  '95773c0d246bb2f395e680318dc799575a3185165aee712570f9bce3b5b02714'
+  'e431643dc3c39845bf5895b671ca267924e5907fead9740fc842cb9e474094b1'
 )
 
 package() {
