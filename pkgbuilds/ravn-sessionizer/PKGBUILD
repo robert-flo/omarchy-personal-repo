@@ -1,21 +1,22 @@
 pkgname=ravn-sessionizer
-pkgver=0.2.0
+pkgver=0.2.0.r5.91a3f3d
 pkgrel=1
 pkgdesc='Sessionizer para herdr: workspaces, repos, pj-* y agentes en un fzf; tríos desde los issues de todos los proyectos'
 arch=('any')
 url='https://github.com/robert-flo/ravn-sessionizer'
 license=('MIT')
 options=('!debug')
-depends=('bash' 'fzf' 'jq' 'github-cli' 'git' 'herdr>=0.9.5' 'ravn-trio')
+depends=('bash' 'fzf' 'jq' 'github-cli' 'git' 'herdr>=0.9.5' 'ravn-trio' 'ravn-omarchy-overlay>=0.1.1')
+# ravn-omarchy-overlay>=0.1.1 carga /usr/share/ravn/bash/rc.d/*.bash (alias rs/ri).
 # herdr y ravn-trio los sirve omarchy-personal-repo (robert-flo/omarchy-pkgs).
-optdepends=('try: clonar con try exec … clone los repos que falten (SES_CLONE_CMD)')
+optdepends=('tobi-try: clonar con try exec … clone los repos que falten (SES_CLONE_CMD)')
 makedepends=('make')
 backup=('etc/ravn/sessionizer.conf')
 # Fuente privada: tarball vendoreado (git archive --prefix=${pkgname}-${pkgver}/
-# v${pkgver} | gzip -n), así makepkg no necesita credenciales de GitHub.
+# <sha> | gzip -n; pkgver = base.r<N>.<shortsha> como en ravn-sessionizer-arch), así makepkg no necesita credenciales de GitHub.
 source=("${pkgname}-${pkgver}.tar.gz")
 sha256sums=(
-  'dbe7fe73b4b23f5d16f921f8e409d5173acb75d6052977ae3bf36c4b38c341e0'
+  '67bd37f0cee0a5fd5d4c42084fe9e3556b3f94d0022ba18787c39f1e8fbf92a7'
 )
 
 package() {
@@ -27,4 +28,12 @@ package() {
   install -d "${pkgdir}/usr/share/bash-completion/completions"
   ln -s /usr/share/ravn/sessionizer/runtime/completion/ravn-sessionizer.bash \
     "${pkgdir}/usr/share/bash-completion/completions/ravn-sessionizer"
+  # Alias rs/ri: drop-in que el rc de ravn-omarchy-overlay (>= 0.1.1) carga
+  # en cada bash interactiva desde /usr/share/ravn/bash/rc.d/*.bash.
+  install -d "${pkgdir}/usr/share/ravn/bash/rc.d"
+  printf '%s\n' \
+    '# ravn-sessionizer: alias de bash (instalado por ravn-sessionizer).' \
+    "alias rs='ravn-sessionizer repos'" \
+    "alias ri='ravn-sessionizer issues'" \
+    > "${pkgdir}/usr/share/ravn/bash/rc.d/ravn-sessionizer.bash"
 }
