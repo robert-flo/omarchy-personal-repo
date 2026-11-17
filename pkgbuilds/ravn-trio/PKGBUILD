@@ -1,5 +1,5 @@
 pkgname=ravn-trio
-pkgver=0.1.7
+pkgver=0.1.9
 pkgrel=1
 pkgdesc='Trío PM/WK/RV local en herdr: pj-trio y plugin ravn.trio'
 arch=('any')
@@ -14,7 +14,7 @@ makedepends=('make')
 # <sha> | gzip -n; pkgver = base.r<N>.<shortsha>), así makepkg no necesita credenciales de GitHub.
 source=("${pkgname}-${pkgver}.tar.gz")
 sha256sums=(
-  'b0e104572d51a6b77d109882713584a5cc5686e8c24e26925d571d238edd934f'
+  'af009ade567f1a30db13fa83dd226844ca72ef6f5886dedf4e10c8eade81e43f'
 )
 
 package() {
