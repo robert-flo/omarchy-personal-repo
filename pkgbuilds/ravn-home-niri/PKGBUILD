@@ -1,9 +1,4 @@
 # Maintainer: Roberto Flores <25asab015@ujmd.edu.sv>
-#
-# ravn-home-niri: capa niri y clavis para la estación de trabajo ravn.
-# Repositorio fuente privado; tarball vendoreado como fuente local con sha256
-# para permitir compilación transparente en la Action release-personal sin secretos.
-
 pkgname=ravn-home-niri
 pkgver=0.1.0
 pkgrel=1
@@ -11,14 +6,13 @@ pkgdesc='Capa niri para la estación de trabajo ravn (niri, clavis, postinstall)
 arch=('any')
 url='https://github.com/robert-flo/ravn-home-niri'
 license=('MIT')
-options=('!debug')
 depends=('ravn-home-common')
 optdepends=(
   'niri: compositor de ventanas wayland'
   'quickshell: shell clavis'
   'matugen: generador de paletas dinamicas'
 )
-source=("${pkgname}-${pkgver}.tar.gz")
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
 sha256sums=('445e40ed2e2474b7b5c8e235e199e1717f2e8d825d5a4e59e3daed507bb45f6e')
 
 package() {
