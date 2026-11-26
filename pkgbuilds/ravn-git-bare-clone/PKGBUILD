@@ -1,7 +1,7 @@
 # Maintainer: Roberto Flores <25asab015@ujmd.edu.sv>
 
 pkgname=ravn-git-bare-clone
-pkgver=0.3.0
+pkgver=0.3.1
 pkgrel=1
 pkgdesc='Launcher y runtime modular de clonación bare y gestión de worktrees'
 arch=('any')
@@ -12,7 +12,7 @@ depends=('bash' 'git' 'github-cli' 'jq')
 makedepends=('make')
 source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
 sha256sums=(
-  'd21fd3c4ceb50a62a0e81ee58f0120c0b71a685e97354ed61cd99109a616ea38'
+  '1a238a6104e72f43853be90be43990fbc565ab9016649d8cbdc0c07093491317'
 )
 
 package() {
