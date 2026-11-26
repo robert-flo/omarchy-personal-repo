@@ -1,22 +1,37 @@
 # Maintainer: Roberto Flores <25asab015@ujmd.edu.sv>
-#
-# ravn-git-bare-clone: launcher y runtime modular de clonacion bare y gestion de worktrees.
-# Repositorio fuente privado; tarball vendoreado como fuente local con sha256
-# para permitir compilacion transparente en la Action release-personal sin secretos.
 
 pkgname=ravn-git-bare-clone
-pkgver=0.1.0
+pkgver=0.3.0
 pkgrel=1
 pkgdesc='Launcher y runtime modular de clonación bare y gestión de worktrees'
 arch=('any')
 url='https://github.com/robert-flo/ravn-git-bare-clone'
 license=('MIT')
 options=('!debug')
-depends=('git' 'github-cli' 'jq')
-source=("${pkgname}-${pkgver}.tar.gz")
-sha256sums=('6ea6d7690304218a1504cad180c389eb36fb9e3a1b47f0c093dd7238a065a7fd')
+depends=('bash' 'git' 'github-cli' 'jq')
+makedepends=('make')
+source=("${pkgname}-${pkgver}.tar.gz::${url}/archive/refs/tags/v${pkgver}.tar.gz")
+sha256sums=(
+  'd21fd3c4ceb50a62a0e81ee58f0120c0b71a685e97354ed61cd99109a616ea38'
+)
 
 package() {
-  cd "${srcdir}/${pkgname}-${pkgver}"
-  make install DESTDIR="${pkgdir}" PREFIX="/opt/${pkgname}" BINDIR="/usr/bin"
+  local source_dir="${srcdir}/${pkgname}-${pkgver}"
+
+  make -C "${source_dir}" DESTDIR="${pkgdir}" PREFIX="/opt/ravn-wt" BINDIR="/usr/bin" install
+  install -Dm644 "${source_dir}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -d "${pkgdir}/usr/share/bash-completion/completions"
+  ln -s /opt/ravn-wt/runtime/completion/git-bare-clone.bash \
+    "${pkgdir}/usr/share/bash-completion/completions/ravn-wt"
+  ln -s /opt/ravn-wt/runtime/completion/git-bare-clone.bash \
+    "${pkgdir}/usr/share/bash-completion/completions/ravn-git-bare-clone"
+  ln -s /opt/ravn-wt/runtime/completion/git-bare-clone.bash \
+    "${pkgdir}/usr/share/bash-completion/completions/git-bare-clone"
+  install -d "${pkgdir}/usr/share/zsh/site-functions"
+  ln -s /opt/ravn-wt/runtime/completion/_git-bare-clone \
+    "${pkgdir}/usr/share/zsh/site-functions/_ravn-wt"
+  ln -s /opt/ravn-wt/runtime/completion/_git-bare-clone \
+    "${pkgdir}/usr/share/zsh/site-functions/_ravn-git-bare-clone"
+  ln -s /opt/ravn-wt/runtime/completion/_git-bare-clone \
+    "${pkgdir}/usr/share/zsh/site-functions/_git-bare-clone"
 }

@@ -1,0 +1,95 @@
+name: Sync -arch PKGBUILDs
+
+# Opción A: omarchy-personal-repo es el único publicador a gh-pages.
+# Este workflow sincroniza los PKGBUILD desde los repos *-arch públicos
+# hacia pkgbuilds/<pkg>/PKGBUILD cuando cambia su versión, y dispara
+# release.yml con GITHUB_TOKEN (actions:write).
+on:
+  schedule:
+    - cron: '15 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: sync-arch-pkgbuilds
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Sync PKGBUILDs from *-arch repos
+        id: sync
+        run: |
+          set -euo pipefail
+
+          # Mapeo: "<repo-arch>:<branch>:<pkgbuilds-subdir>"
+          repos=(
+            "ravn-git-bare-clone-arch:main:ravn-git-bare-clone"
+            "ravn-trio-arch:main:ravn-trio"
+            "ravn-webapps-arch:master:ravn-webapps"
+            "ravn-home-niri-arch:main:ravn-home-niri"
+          )
+
+          changed=false
+          for entry in "${repos[@]}"; do
+            IFS=':' read -r repo branch dir <<<"$entry"
+            dest="pkgbuilds/$dir"
+            tmp="$(mktemp)"
+            url="https://raw.githubusercontent.com/robert-flo/${repo}/${branch}/PKGBUILD"
+            if ! curl -fsSL "$url" -o "$tmp"; then
+              echo "::warning::No se pudo descargar $url"
+              rm -f "$tmp"
+              continue
+            fi
+
+            # Solo sincronizar automáticamente si el PKGBUILD usa source remoto (https://)
+            # para no romper paquetes con tarballs vendoreados.
+            if ! grep -qE 'https://|github\.com' "$tmp"; then
+              echo "$dir: PKGBUILD sin URL remota, se omite sync automático"
+              rm -f "$tmp"
+              continue
+            fi
+
+            mkdir -p "$dest"
+            if [[ ! -f "$dest/PKGBUILD" ]] || ! cmp -s "$tmp" "$dest/PKGBUILD"; then
+              mv "$tmp" "$dest/PKGBUILD"
+              # Limpiar tarballs vendoreados obsoletos si ahora usa source remoto
+              if grep -qE 'source=.*https://|source=.*\$\{url\}' "$dest/PKGBUILD"; then
+                rm -f "$dest"/*.tar.gz "$dest"/*.tar.zst 2>/dev/null || true
+              fi
+              echo "Actualizado $dest/PKGBUILD desde $repo"
+              changed=true
+            else
+              rm -f "$tmp"
+              echo "$dir: sin cambios"
+            fi
+          done
+
+          echo "changed=$changed" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and trigger release
+        if: steps.sync.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          git config user.name "Roberto Flores"
+          git config user.email "25asab015@ujmd.edu.sv"
+          git add pkgbuilds/
+          if git diff --cached --quiet; then
+            echo "Sin cambios en pkgbuilds/"
+            exit 0
+          fi
+          git commit -m "chore(sync): actualizar PKGBUILDs desde repos *-arch"
+          git push origin HEAD:main
+          gh workflow run release.yml --ref main
